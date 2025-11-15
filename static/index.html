@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>RPG Ledger MCP UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #020617;
+      color: #e5e7eb;
+      display: flex;
+      height: 100vh;
+    }
+    .sidebar {
+      width: 260px;
+      background: #020617;
+      border-right: 1px solid #1f2937;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 24px;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 12px;
+    }
+    h2, h3 {
+      margin-top: 0;
+    }
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      margin-bottom: 12px;
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #1f2937;
+      border-radius: 4px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      background: #1d4ed8;
+      font-size: 11px;
+      margin-right: 6px;
+    }
+    .card {
+      background: #020617;
+      border-radius: 12px;
+      border: 1px solid #1f2937;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 10px 25px rgba(15,23,42,0.6);
+    }
+    .muted {
+      color: #9ca3af;
+      font-size: 13px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+      gap: 8px;
+      margin: 8px 0 12px;
+    }
+    .stat-box {
+      background: #020617;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+      padding: 6px 8px;
+      text-align: center;
+      font-size: 12px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    ul {
+      margin: 6px 0;
+      padding-left: 20px;
+      font-size: 14px;
+    }
+    .gold {
+      font-weight: 600;
+      color: #fbbf24;
+    }
+    .notes {
+      white-space: pre-wrap;
+      font-size: 13px;
+      color: #d1d5db;
+    }
+    .layout-top {
+      display: flex;
+      gap: 16px;
+      flex: 1;
+      overflow: hidden;
+    }
+    .column {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .logs {
+      flex: 0.9;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+    .log-entry {
+      font-size: 12px;
+      border-bottom: 1px solid #1f2937;
+      padding: 4px 0;
+    }
+    .log-op {
+      font-weight: 600;
+    }
+    .log-ts {
+      color: #6b7280;
+      font-size: 11px;
+      margin-right: 4px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 9999px;
+      font-size: 10px;
+      background: #111827;
+      border: 1px solid #1f2937;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h1>RPG Ledger MCP</h1>
+    <label class="muted" for="campaignSelect">Kampania</label>
+    <select id="campaignSelect"></select>
+
+    <label class="muted" for="characterSelect">Postać</label>
+    <select id="characterSelect"></select>
+  </div>
+
+  <div class="main">
+    <div class="layout-top">
+      <div class="column">
+        <div id="campaignView"></div>
+        <div id="characterView"></div>
+      </div>
+      <div class="column">
+        <div class="card">
+          <div class="badge">Log MCP</div>
+          <p class="muted">Ostatnie mutacje (gold/hp/xp/notatki/dni/lokacja) wykonywane przez agenta.</p>
+          <div id="logs" class="logs"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const campaignSelect = document.getElementById("campaignSelect");
+    const characterSelect = document.getElementById("characterSelect");
+    const campaignView = document.getElementById("campaignView");
+    const characterView = document.getElementById("characterView");
+    const logsEl = document.getElementById("logs");
+
+    let currentCampaign = null;
+
+    async function loadCampaigns() {
+      const res = await fetch("/api/campaigns");
+      const campaigns = await res.json();
+
+      campaignSelect.innerHTML = "";
+      campaigns.forEach((c) => {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        campaignSelect.appendChild(opt);
+      });
+
+      if (campaigns.length > 0) {
+        await loadCampaign(campaigns[0].id);
+      }
+    }
+
+    async function loadCampaign(id) {
+      const res = await fetch(`/api/campaigns/${id}`);
+      currentCampaign = await res.json();
+
+      renderCampaign(currentCampaign);
+      fillCharacters(currentCampaign);
+    }
+
+    function fillCharacters(campaign) {
+      characterSelect.innerHTML = "";
+      (campaign.characters || []).forEach((ch, idx) => {
+        const opt = document.createElement("option");
+        opt.value = ch.id;
+        opt.textContent = ch.name;
+        if (idx === 0) opt.selected = true;
+        characterSelect.appendChild(opt);
+      });
+
+      if (campaign.characters && campaign.characters.length > 0) {
+        renderCharacter(campaign.characters[0]);
+      } else {
+        characterView.innerHTML = "<p class='muted'>Brak postaci w tej kampanii.</p>";
+      }
+    }
+
+    function renderCampaign(c) {
+      campaignView.innerHTML = `
+        <div class="card">
+          <div class="badge">Kampania</div>
+          <h2>${c.name}</h2>
+          <p class="muted">
+            Dzień: <strong>${c.day ?? "-"}</strong>
+            &nbsp;&middot;&nbsp;
+            Lokacja: <strong>${c.location ?? "-"}</strong>
+          </p>
+          ${c.notes ? `<p class="notes">${c.notes}</p>` : ""}
+        </div>
+      `;
+    }
+
+    function renderCharacter(ch) {
+      const stats = ch.stats || {};
+      const inventory = ch.inventory || [];
+
+      characterView.innerHTML = `
+        <div class="card">
+          <div class="badge">Postać</div>
+          <h2>${ch.name}</h2>
+          <p class="muted">
+            Klasa: <strong>${ch.class || "-"}</strong>
+            &nbsp;&middot;&nbsp;
+            Poziom: <strong>${ch.level ?? "-"}</strong>
+            &nbsp;&middot;&nbsp;
+            XP: <strong>${ch.xp ?? "-"}</strong>
+          </p>
+          <p class="muted">
+            HP: <strong>${ch.hp ?? "-"}</strong>
+            &nbsp;&middot;&nbsp;
+            Złoto: <span class="gold">${ch.gold ?? 0}</span>
+          </p>
+
+          <div class="stats-grid">
+            ${Object.entries(stats)
+              .map(
+                ([key, val]) => `
+              <div class="stat-box">
+                <div class="stat-label">${key.toUpperCase()}</div>
+                <div>${val}</div>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+
+          <h3>Ekwipunek</h3>
+          ${
+            inventory.length
+              ? `<ul>${inventory
+                  .map(
+                    (item) =>
+                      `<li>${item.name} ${
+                        item.qty != null && item.qty !== 1
+                          ? `<span class="muted">(x${item.qty})</span>`
+                          : ""
+                      }</li>`
+                  )
+                  .join("")}</ul>`
+              : `<p class="muted">Pusto w plecaku.</p>`
+          }
+
+          ${
+            ch.notes
+              ? `<h3>Notatki</h3><p class="notes">${ch.notes}</p>`
+              : ""
+          }
+        </div>
+      `;
+    }
+
+    async function loadLogs() {
+      try {
+        const res = await fetch("/api/logs?limit=50");
+        const logs = await res.json();
+        renderLogs(logs);
+      } catch (e) {
+        console.error("Failed to load logs", e);
+      }
+    }
+
+    function renderLogs(logs) {
+      if (!logs.length) {
+        logsEl.innerHTML = "<p class='muted'>Brak zarejestrowanych mutacji.</p>";
+        return;
+      }
+      logsEl.innerHTML = logs
+        .map((entry) => {
+          const ts = entry.ts || "";
+          const op = entry.op || "";
+          const cid = entry.campaign_id || "";
+          const charId = entry.char_id || "";
+          const amount = entry.amount;
+          const value = entry.value;
+          const text = entry.text;
+
+          return `
+            <div class="log-entry">
+              <span class="log-ts">${ts}</span>
+              <span class="pill">${cid || "-"}</span>
+              ${
+                charId
+                  ? `<span class="pill">char: ${charId}</span>`
+                  : ""
+              }
+              <span class="log-op">${op}</span>
+              ${
+                amount != null
+                  ? `<span class="muted">amount=${amount}</span>`
+                  : ""
+              }
+              ${
+                value
+                  ? `<span class="muted">value="${value}"</span>`
+                  : ""
+              }
+              ${
+                text
+                  ? `<div class="muted" style="margin-top:2px;">${text}</div>`
+                  : ""
+              }
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    campaignSelect.addEventListener("change", (e) => {
+      const id = e.target.value;
+      if (id) loadCampaign(id);
+    });
+
+    characterSelect.addEventListener("change", (e) => {
+      const id = e.target.value;
+      if (!currentCampaign) return;
+      const ch = (currentCampaign.characters || []).find(
+        (c) => c.id === id
+      );
+      if (ch) renderCharacter(ch);
+    });
+
+    loadCampaigns().catch((err) => {
+      console.error(err);
+      campaignView.innerHTML =
+        "<p class='muted'>Nie udało się załadować kampanii.</p>";
+    });
+
+    loadLogs();
+    setInterval(loadLogs, 5000);
+  </script>
+</body>
+</html>

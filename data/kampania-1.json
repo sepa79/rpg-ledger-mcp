@@ -1,0 +1,62 @@
+{
+  "id": "kampania-1",
+  "name": "Kamienny Krąg",
+  "day": 14,
+  "location": "Miasteczko nad Rzeką",
+  "notes": "Grupa właśnie wróciła z lochu pod młynem.",
+  "characters": [
+    {
+      "id": "zbig",
+      "name": "Zbig, Zmęczony Programista",
+      "class": "Mag Debugger",
+      "level": 3,
+      "xp": 950,
+      "hp": 27,
+      "stats": {
+        "str": 9,
+        "dex": 12,
+        "int": 17,
+        "wis": 14,
+        "cha": 11
+      },
+      "gold": 103,
+      "inventory": [
+        {
+          "id": "coffee",
+          "name": "Kubek kawy +2 do czujności",
+          "qty": 1
+        },
+        {
+          "id": "usb",
+          "name": "Zaklęty pendrive",
+          "qty": 1
+        }
+      ],
+      "notes": "Nie ufa nikomu, kto mówi 'to prosta zmiana w produkcji'."
+    },
+    {
+      "id": "tim",
+      "name": "Tim the Tester",
+      "class": "Łotr QA",
+      "level": 2,
+      "xp": 430,
+      "hp": 19,
+      "stats": {
+        "str": 10,
+        "dex": 15,
+        "int": 13,
+        "wis": 12,
+        "cha": 10
+      },
+      "gold": 59,
+      "inventory": [
+        {
+          "id": "notebook",
+          "name": "Zaczarowany notes bugów",
+          "qty": 1
+        }
+      ],
+      "notes": "Ma szósty zmysł do znajdowania edge case’ów."
+    }
+  ]
+}

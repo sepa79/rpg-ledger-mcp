@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  rpg-ledger-mcp:
+    build: .
+    container_name: rpg-ledger-mcp
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs-dir
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: rpg-ledger-ngrok
+    environment:
+      # WSTAW TU SWÓJ TOKEN Z https://dashboard.ngrok.com/get-started/your-authtoken
+      NGROK_AUTHTOKEN: "35UK1V3lNUVWMSRaBX71rCaSJy7_6Ec3qVRxHYc1YSjHP8fe7"
+    command:
+      - "http"
+      - "rpg-ledger-mcp:8000"
+    depends_on:
+      - rpg-ledger-mcp
+    restart: unless-stopped
