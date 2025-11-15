@@ -13,13 +13,6 @@
       display: flex;
       height: 100vh;
     }
-    .sidebar {
-      width: 260px;
-      background: #020617;
-      border-right: 1px solid #1f2937;
-      padding: 16px;
-      box-sizing: border-box;
-    }
     .main {
       flex: 1;
       display: flex;
@@ -27,6 +20,21 @@
       padding: 16px 24px;
       box-sizing: border-box;
       overflow: hidden;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .topbar-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .topbar select {
+      width: auto;
+      min-width: 200px;
+      margin-bottom: 0;
     }
     h1 {
       font-size: 18px;
@@ -59,6 +67,12 @@
       padding: 16px;
       margin-bottom: 16px;
       box-shadow: 0 10px 25px rgba(15,23,42,0.6);
+    }
+    .card-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
     }
     .muted {
       color: #9ca3af;
@@ -129,47 +143,161 @@
       display: inline-block;
       padding: 1px 6px;
       border-radius: 9999px;
-      font-size: 10px;
+      border: 1px solid #374151;
+      font-size: 11px;
       background: #111827;
-      border: 1px solid #1f2937;
       margin-right: 4px;
+    }
+    .party-card-wrapper {
+      margin-top: 12px;
+    }
+    .party-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .character-card {
+      background: #020617;
+      border-radius: 10px;
+      border: 1px solid #1f2937;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+    }
+    .character-card:hover {
+      border-color: #2563eb;
+      box-shadow: 0 10px 25px rgba(37,99,235,0.35);
+      transform: translateY(-1px);
+    }
+    .character-card.selected {
+      border-color: #22c55e;
+      box-shadow: 0 0 0 1px rgba(34,197,94,0.5);
+    }
+    .character-name-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .character-name-row h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .character-subline {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 6px;
+    }
+    .bar-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .bar-label {
+      font-size: 11px;
+      color: #9ca3af;
+      display: flex;
+      justify-content: space-between;
+    }
+    .bar {
+      position: relative;
+      height: 6px;
+      border-radius: 9999px;
+      background: #020617;
+      border: 1px solid #1f2937;
+      overflow: hidden;
+    }
+    .bar-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 0%;
+      border-radius: inherit;
+    }
+    .bar-fill.hp {
+      background: linear-gradient(90deg, #ef4444, #22c55e);
+    }
+    .bar-fill.xp {
+      background: linear-gradient(90deg, #0ea5e9, #a855f7);
+    }
+    .inventory-preview {
+      font-size: 12px;
+      color: #9ca3af;
+      min-height: 16px;
+    }
+    .quick-actions {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .quick-btn {
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: #e5e7eb;
+      border-radius: 9999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .quick-btn:hover {
+      border-color: #2563eb;
+      background: #0b1120;
     }
   </style>
 </head>
 <body>
-  <div class="sidebar">
-    <h1>RPG Ledger MCP</h1>
-    <label class="muted" for="campaignSelect">Kampania</label>
-    <select id="campaignSelect"></select>
-
-    <label class="muted" for="characterSelect">Postać</label>
-    <select id="characterSelect"></select>
-  </div>
-
   <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">RPG Ledger MCP</div>
+      <div>
+        <span class="muted" style="font-size:12px; margin-right:6px;">Kampania</span>
+        <select id="campaignSelect"></select>
+      </div>
+    </div>
     <div class="layout-top">
       <div class="column">
-        <div id="campaignView"></div>
-        <div id="characterView"></div>
+        <div id="campaignSummary"></div>
+        <div id="worldMap"></div>
+        <div id="partyGrid" class="party-card-wrapper"></div>
+        <div id="characterDetail"></div>
       </div>
-      <div class="column">
-        <div class="card">
-          <div class="badge">Log MCP</div>
-          <p class="muted">Ostatnie mutacje (gold/hp/xp/notatki/dni/lokacja) wykonywane przez agenta.</p>
-          <div id="logs" class="logs"></div>
+        <div class="column">
+          <div class="card">
+            <div class="card-header-row" style="margin-bottom:8px;">
+              <div class="badge">Panel</div>
+              <div style="display:flex; gap:4px;">
+                <button class="quick-btn" id="tabLogs" data-tab="logs">Log MCP</button>
+                <button class="quick-btn" id="tabTodos" data-tab="todos">TODOs</button>
+              </div>
+            </div>
+            <p class="muted" id="panelSubtitle">Ostatnie mutacje wykonywane przez agenta / MCP.</p>
+            <div id="logs" class="logs"></div>
+            <div id="todos" class="logs" style="display:none;"></div>
+          </div>
         </div>
-      </div>
     </div>
   </div>
 
   <script>
     const campaignSelect = document.getElementById("campaignSelect");
-    const characterSelect = document.getElementById("characterSelect");
-    const campaignView = document.getElementById("campaignView");
-    const characterView = document.getElementById("characterView");
+    const campaignSummaryEl = document.getElementById("campaignSummary");
+    const partyGridEl = document.getElementById("partyGrid");
+    const worldMapEl = document.getElementById("worldMap");
+    const characterDetailEl = document.getElementById("characterDetail");
     const logsEl = document.getElementById("logs");
+    const todosEl = document.getElementById("todos");
+    const tabLogsBtn = document.getElementById("tabLogs");
+    const tabTodosBtn = document.getElementById("tabTodos");
+    const panelSubtitleEl = document.getElementById("panelSubtitle");
 
     let currentCampaign = null;
+    let selectedCharacterId = null;
+    let currentPanelTab = "logs";
 
     async function loadCampaigns() {
       const res = await fetch("/api/campaigns");
@@ -192,47 +320,168 @@
       const res = await fetch(`/api/campaigns/${id}`);
       currentCampaign = await res.json();
 
-      renderCampaign(currentCampaign);
-      fillCharacters(currentCampaign);
-    }
-
-    function fillCharacters(campaign) {
-      characterSelect.innerHTML = "";
-      (campaign.characters || []).forEach((ch, idx) => {
-        const opt = document.createElement("option");
-        opt.value = ch.id;
-        opt.textContent = ch.name;
-        if (idx === 0) opt.selected = true;
-        characterSelect.appendChild(opt);
-      });
-
-      if (campaign.characters && campaign.characters.length > 0) {
-        renderCharacter(campaign.characters[0]);
+      renderCampaignSummary(currentCampaign);
+      renderWorldMap(currentCampaign);
+      renderParty(currentCampaign);
+      const chars = currentCampaign.characters || [];
+      if (chars.length) {
+        selectedCharacterId = chars[0].id;
+        renderCharacterDetail(chars[0]);
       } else {
-        characterView.innerHTML = "<p class='muted'>Brak postaci w tej kampanii.</p>";
+        characterDetailEl.innerHTML = "<p class='muted'>Brak postaci w tej kampanii.</p>";
       }
     }
 
-    function renderCampaign(c) {
-      campaignView.innerHTML = `
+    function renderCampaignSummary(c) {
+      campaignSummaryEl.innerHTML = `
         <div class="card">
-          <div class="badge">Kampania</div>
-          <h2>${c.name}</h2>
-          <p class="muted">
-            Dzień: <strong>${c.day ?? "-"}</strong>
-            &nbsp;&middot;&nbsp;
-            Lokacja: <strong>${c.location ?? "-"}</strong>
-          </p>
-          ${c.notes ? `<p class="notes">${c.notes}</p>` : ""}
+          <div class="card-header-row">
+            <div>
+              <div class="badge">Kampania</div>
+              <h2>${c.name}</h2>
+            </div>
+            <div class="muted" style="text-align:right; font-size:12px;">
+              Dzie: <strong>${c.day ?? "-"}</strong><br />
+              Lokacja: <strong>${c.location ?? "-"}</strong>
+            </div>
+          </div>
+          ${c.notes ? `<p class="notes" style="margin-top:8px;">${c.notes}</p>` : ""}
         </div>
       `;
     }
 
-    function renderCharacter(ch) {
+    function renderWorldMap(campaign) {
+      const locations = campaign.locations || [];
+      const currentName = campaign.location || "";
+
+      if (!locations.length && !currentName) {
+        worldMapEl.innerHTML = "";
+        return;
+      }
+
+      const rows = locations.length
+        ? locations
+        : [{ id: currentName || "place", name: currentName || "Nieznane miejsce", type: "place", tags: [], description: "" }];
+
+      const rowsHtml = rows
+        .map((loc) => {
+          const name = loc.name || loc.id;
+          const type = loc.type || "place";
+          const tags = loc.tags || [];
+          const isCurrent = name === currentName;
+          const tagsHtml = tags.map((t) => `<span class=\"pill\">${t}</span>`).join(" ");
+          return `
+            <div class=\"log-entry\">
+              <div>
+                <span class=\"muted\">${type}</span>
+                <strong style=\"margin-left:4px;\">${name}</strong>
+                ${tagsHtml}
+              </div>
+              <div style=\"margin-top:4px; display:flex; align-items:center; gap:8px; font-size:12px;\">
+                ${isCurrent ? `<span class=\\"pill\\">Tu jesteście</span>` : `<button class=\\"quick-btn world-travel\\" data-location-name=\\"${name}\\">Podróż tutaj</button>`}
+                ${loc.description ? `<span class=\\"muted\\">${loc.description}</span>` : ""}
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      worldMapEl.innerHTML = `
+        <div class="card">
+          <div class="card-header-row">
+            <div>
+              <div class="badge">Mapa świata</div>
+              <p class="muted" style="margin: 4px 0 0; font-size:12px;">Lista znanych lokacji i aktualne położenie drużyny.</p>
+            </div>
+          </div>
+          <div class="logs" style="margin-top:8px; max-height:220px;">
+            ${rowsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderParty(campaign) {
+      const characters = campaign.characters || [];
+      if (!characters.length) {
+        partyGridEl.innerHTML = "";
+        return;
+      }
+
+      const cardsHtml = characters
+        .map((ch) => {
+          const inv = ch.inventory || [];
+          const invPreview = inv
+            .slice(0, 3)
+            .map((item) => `${item.name}${item.qty && item.qty !== 1 ? ` (x${item.qty})` : ""}`)
+            .join(", ");
+          const hp = ch.hp ?? 0;
+          const maxHp = ch.maxHp ?? ch.hp ?? 1;
+          const hpPercent = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+          const xp = ch.xp ?? 0;
+          const xpPercent = 100;
+          const selectedClass = ch.id === selectedCharacterId ? " selected" : "";
+          return `
+            <div class="character-card${selectedClass}" data-char-id="${ch.id}">
+              <div class="character-name-row">
+                <h3>${ch.name}</h3>
+                <span class="gold">${ch.gold ?? 0} gp</span>
+              </div>
+              <div class="character-subline">
+                ${ch.class || "?"} &middot; lvl ${ch.level ?? "-"}
+              </div>
+              <div class="bar-row">
+                <div class="bar-label">
+                  <span>HP</span>
+                  <span>${hp}/${maxHp}</span>
+                </div>
+                <div class="bar">
+                  <div class="bar-fill hp" style="width: ${hpPercent}%;"></div>
+                </div>
+                <div class="bar-label">
+                  <span>XP</span>
+                  <span>${xp}</span>
+                </div>
+                <div class="bar">
+                  <div class="bar-fill xp" style="width: ${xpPercent}%;"></div>
+                </div>
+              </div>
+              <div class="inventory-preview">
+                ${invPreview || "Brak widocznych przedmiotów."}
+              </div>
+              <div class="quick-actions">
+                <button class="quick-btn" data-action="hp_minus" data-char-id="${ch.id}">-5 HP</button>
+                <button class="quick-btn" data-action="hp_plus" data-char-id="${ch.id}">+5 HP</button>
+                <button class="quick-btn" data-action="gold_minus" data-char-id="${ch.id}">-5 gp</button>
+                <button class="quick-btn" data-action="gold_plus" data-char-id="${ch.id}">+5 gp</button>
+                <button class="quick-btn" data-action="loot" data-char-id="${ch.id}">Loot</button>
+                <button class="quick-btn" data-action="note" data-char-id="${ch.id}">Note</button>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      partyGridEl.innerHTML = `
+        <div class="card">
+          <div class="card-header-row">
+            <div>
+              <div class="badge">Drużyna</div>
+              <p class="muted" style="margin: 4px 0 0;">Kliknij kartę, aby otworzyć pełny widok postaci.</p>
+            </div>
+          </div>
+          <div class="party-grid">
+            ${cardsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCharacterDetail(ch) {
       const stats = ch.stats || {};
       const inventory = ch.inventory || [];
 
-      characterView.innerHTML = `
+      characterDetailEl.innerHTML = `
         <div class="card">
           <div class="badge">Postać</div>
           <h2>${ch.name}</h2>
@@ -292,6 +541,7 @@
         const res = await fetch("/api/logs?limit=50");
         const logs = await res.json();
         renderLogs(logs);
+        renderTodos(logs);
       } catch (e) {
         console.error("Failed to load logs", e);
       }
@@ -312,6 +562,19 @@
           const value = entry.value;
           const text = entry.text;
 
+          let valueStr = "";
+          if (value !== null && value !== undefined) {
+            if (typeof value === "object") {
+              try {
+                valueStr = JSON.stringify(value);
+              } catch (e) {
+                valueStr = String(value);
+              }
+            } else {
+              valueStr = String(value);
+            }
+          }
+
           return `
             <div class="log-entry">
               <span class="log-ts">${ts}</span>
@@ -328,8 +591,8 @@
                   : ""
               }
               ${
-                value
-                  ? `<span class="muted">value="${value}"</span>`
+                valueStr
+                  ? `<span class="muted">value=${valueStr}</span>`
                   : ""
               }
               ${
@@ -343,23 +606,225 @@
         .join("");
     }
 
+    function renderTodos(logs) {
+      const todos = [];
+
+      logs.forEach((entry) => {
+        if (entry.type === "todo") {
+          todos.push({
+            ts: entry.ts,
+            summary: entry.summary || entry.text || "TODO",
+            details: entry.details || "",
+            tags: entry.tags || [],
+            done: !!entry.done,
+            comment: entry.comment || "",
+          });
+        } else if (entry.type === "history" && typeof entry.text === "string" && entry.text.startsWith("TODO")) {
+          let details = "";
+          if (entry.value) {
+            if (typeof entry.value === "string") {
+              details = entry.value;
+            } else if (typeof entry.value === "object" && entry.value.details) {
+              details = entry.value.details;
+            }
+          }
+          todos.push({
+            ts: entry.ts,
+            summary: entry.text,
+            details,
+            tags: (entry.value && entry.value.tags) || [],
+            done: false,
+            comment: "",
+          });
+        }
+      });
+
+      if (!todos.length) {
+        todosEl.innerHTML = "<p class='muted'>Brak TODO w logach.</p>";
+        return;
+      }
+
+      todosEl.innerHTML = todos
+        .map((todo) => {
+          const done = !!todo.done;
+          const comment = todo.comment || "";
+          const tagsHtml = (todo.tags || [])
+            .map((t) => `<span class=\"pill\">${t}</span>`)
+            .join(" ");
+          const safeComment = comment.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          return `
+            <div class=\"log-entry\" data-todo-ts=\"${todo.ts}\">
+              <div>
+                <span class=\"log-ts\">${todo.ts}</span>
+                ${tagsHtml}
+              </div>
+              <div class=\"muted\" style=\"margin-top:2px;\">${todo.summary}</div>
+              ${todo.details ? `<div class=\\"muted\\" style=\\"margin-top:2px; white-space:pre-wrap;\\">${todo.details}</div>` : ""}
+              <div style=\"margin-top:4px; font-size:12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;\">
+                <label style=\"display:flex; align-items:center; gap:4px;\">
+                  <input type=\"checkbox\" class=\"todo-done\" ${done ? "checked" : ""} />
+                  <span class=\"muted\">Zrobione</span>
+                </label>
+                <input type=\"text\" class=\"todo-comment\" placeholder=\"Komentarz implementacji...\" value=\"${safeComment}\" style=\"flex:1; min-width:180px; padding:2px 6px; border-radius:4px; border:1px solid #1f2937; background:#020617; color:#e5e7eb;\" />
+                <button class=\"quick-btn todo-save\">Zapisz</button>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
     campaignSelect.addEventListener("change", (e) => {
       const id = e.target.value;
       if (id) loadCampaign(id);
     });
 
-    characterSelect.addEventListener("change", (e) => {
-      const id = e.target.value;
+    tabLogsBtn.addEventListener("click", () => {
+      currentPanelTab = "logs";
+      logsEl.style.display = "block";
+      todosEl.style.display = "none";
+      panelSubtitleEl.textContent = "Ostatnie mutacje wykonywane przez agenta / MCP.";
+    });
+
+    tabTodosBtn.addEventListener("click", () => {
+      currentPanelTab = "todos";
+      logsEl.style.display = "none";
+      todosEl.style.display = "block";
+      panelSubtitleEl.textContent = "TODO z logów (dev_todo / TODO: ...)";
+    });
+
+    todosEl.addEventListener("click", (e) => {
+      const saveBtn = e.target.closest(".todo-save");
+      if (!saveBtn) return;
+      const container = saveBtn.closest(".log-entry");
+      if (!container) return;
+      const ts = container.getAttribute("data-todo-ts");
+      const doneEl = container.querySelector(".todo-done");
+      const commentEl = container.querySelector(".todo-comment");
+      const status = doneEl && doneEl.checked ? "done" : "open";
+      const comment = commentEl ? commentEl.value : "";
+      fetch("/api/todo-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ todo_ts: ts, status, comment }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("failed");
+          return res.json();
+        })
+        .then(() => loadLogs())
+        .catch((err) => console.error("failed to update todo status", err));
+    });
+
+    function selectCharacterById(id) {
       if (!currentCampaign) return;
-      const ch = (currentCampaign.characters || []).find(
-        (c) => c.id === id
-      );
-      if (ch) renderCharacter(ch);
+      const ch = (currentCampaign.characters || []).find((c) => c.id === id);
+      if (ch) {
+        selectedCharacterId = id;
+        renderCharacterDetail(ch);
+        renderParty(currentCampaign);
+      }
+    }
+
+    async function callMutate(payload) {
+      const res = await fetch("/api/mutate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        console.error("mutate failed", await res.text());
+        return;
+      }
+      const data = await res.json();
+      currentCampaign = data;
+      if (selectedCharacterId) {
+        selectCharacterById(selectedCharacterId);
+      } else {
+        renderCampaignSummary(currentCampaign);
+        renderParty(currentCampaign);
+      }
+      renderWorldMap(currentCampaign);
+      loadLogs();
+    }
+
+    function handleQuickAction(action, charId) {
+      if (!currentCampaign) return;
+      const campaignId = currentCampaign.id;
+      if (!campaignId) return;
+
+      if (action === "hp_minus" || action === "hp_plus") {
+        const delta = action === "hp_minus" ? -5 : 5;
+        callMutate({
+          campaign_id: campaignId,
+          op: "hp_add",
+          char_id: charId,
+          amount: delta,
+        });
+      } else if (action === "gold_minus" || action === "gold_plus") {
+        const delta = action === "gold_minus" ? -5 : 5;
+        callMutate({
+          campaign_id: campaignId,
+          op: "gold_add",
+          char_id: charId,
+          amount: delta,
+        });
+      } else if (action === "loot") {
+        const name = prompt("Nazwa przedmiotu do dodania:");
+        if (!name) return;
+        const qtyInput = prompt("Ilość (domyślnie 1):", "1");
+        const qty = parseInt(qtyInput || "1", 10) || 1;
+        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
+        callMutate({
+          campaign_id: campaignId,
+          op: "inventory_add",
+          char_id: charId,
+          value: { id, name, qty },
+          text: name,
+        });
+      } else if (action === "note") {
+        const text = prompt("Notatka dla postaci:");
+        if (!text) return;
+        callMutate({
+          campaign_id: campaignId,
+          op: "char_note_add",
+          char_id: charId,
+          text,
+        });
+      }
+    }
+
+    partyGridEl.addEventListener("click", (e) => {
+      const actionBtn = e.target.closest("[data-action]");
+      if (actionBtn) {
+        const action = actionBtn.getAttribute("data-action");
+        const charId = actionBtn.getAttribute("data-char-id");
+        handleQuickAction(action, charId);
+        e.stopPropagation();
+        return;
+      }
+      const card = e.target.closest(".character-card");
+      if (card) {
+        const charId = card.getAttribute("data-char-id");
+        selectCharacterById(charId);
+      }
+    });
+
+    worldMapEl.addEventListener("click", (e) => {
+      const btn = e.target.closest(".world-travel");
+      if (!btn) return;
+      const name = btn.getAttribute("data-location-name");
+      if (!name || !currentCampaign) return;
+      callMutate({
+        campaign_id: currentCampaign.id,
+        op: "location_set",
+        value: name,
+      });
     });
 
     loadCampaigns().catch((err) => {
       console.error(err);
-      campaignView.innerHTML =
+      campaignSummaryEl.innerHTML =
         "<p class='muted'>Nie udało się załadować kampanii.</p>";
     });
 

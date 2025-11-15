@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any, Optional, List
 
@@ -16,8 +17,10 @@ import datetime
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 LOG_FILE = Path("/app/logs-dir/logs.jsonl")
+CI_STATUS_FILE = Path("/app/logs-dir/ci-status.json")
 
 mcp = FastMCP("RpgLedger")
+dev_mcp = FastMCP("RpgLedgerDev")
 app = FastAPI(title="RPG Ledger MCP + UI")
 
 app.add_middleware(
@@ -399,12 +402,128 @@ def dev_todo(
             "tags": tags or [],
             "campaign_id": campaign_id,
             "char_id": char_id,
+            "done": False,
+            "comment": "",
         }
     )
     return {"ok": True}
 
 
+@dev_mcp.tool()
+def dev_get_logs(
+    limit: int = 100,
+    event_type: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Zwróć ostatnie wpisy z logs.jsonl.
+
+    Użyteczne dla diagnostyki z poziomu Dev MCP.
+    Opcjonalnie można zawęzić po polu "type" (np. "mutate", "todo", "history").
+    """
+    if not LOG_FILE.exists():
+        return []
+    entries: List[dict[str, Any]] = []
+    with LOG_FILE.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if event_type and obj.get("type") != event_type:
+                continue
+            entries.append(obj)
+    entries.sort(key=lambda e: e.get("ts", ""))
+    if limit and limit > 0:
+        entries = entries[-limit:]
+    entries.reverse()
+    return entries
+
+
+@dev_mcp.tool()
+def dev_get_todos(limit: int = 50) -> list[dict[str, Any]]:
+    """Zwróć ostatnie TODO zapisane przez dev_todo.
+
+    Filtrowane po type == "todo" w logs.jsonl.
+    """
+    return dev_get_logs(limit=limit, event_type="todo")
+
+
+@dev_mcp.tool()
+def dev_request_restart(target: str = "stack") -> dict[str, Any]:
+    """Zgłoś prośbę o restart stacka / serwisów.
+
+    NIE wykonuje restartu samodzielnie – tylko zapisuje zdarzenie
+    type == "dev_restart_request" w logs.jsonl. Skrypt CI / operator
+    może ten log obserwować i wykonać właściwy restart.
+
+    target: "stack", "gameserver", "mcp".
+    """
+    allowed = {"stack", "gameserver", "mcp"}
+    if target not in allowed:
+        raise ValueError(f"target must be one of {sorted(allowed)}")
+    payload = {
+        "type": "dev_restart_request",
+        "target": target,
+    }
+    _log_event(payload)
+    return {"ok": True, "requested": target}
+
+
+@dev_mcp.tool()
+def dev_get_ci_status() -> dict[str, Any]:
+    """Zwróć status deployu/CI z pliku ci-status.json.
+
+    Pipeline CI może zapisywać do /app/logs-dir/ci-status.json
+    np. {"status": "ok" | "building" | "failed", ...}.
+    Jeśli plik nie istnieje albo jest niepoprawny, zwracamy "unknown".
+    """
+    if not CI_STATUS_FILE.exists():
+        return {"status": "unknown"}
+    try:
+        with CI_STATUS_FILE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {"status": "unknown"}
+    if not isinstance(data, dict):
+        return {"status": "unknown"}
+    if "status" not in data:
+        data["status"] = "unknown"
+    return data
+
+
+@dev_mcp.tool()
+def dev_wait_for_deploy(
+    desired_status: str = "ok",
+    timeout_seconds: int = 120,
+    poll_interval_seconds: int = 5,
+) -> dict[str, Any]:
+    """Czekaj aż CI/deploy osiągnie zadany status.
+
+    Blokujący call po stronie Dev MCP: w pętli odpytuje dev_get_ci_status()
+    co poll_interval_seconds, maksymalnie przez timeout_seconds.
+    """
+    start = time.time()
+    last_status: dict[str, Any] = {}
+    while True:
+        last_status = dev_get_ci_status()
+        if str(last_status.get("status")) == desired_status:
+            break
+        if time.time() - start >= timeout_seconds:
+            break
+        time.sleep(max(1, poll_interval_seconds))
+    elapsed = int(time.time() - start)
+    return {
+        "desired_status": desired_status,
+        "elapsed_seconds": elapsed,
+        "status": last_status.get("status", "unknown"),
+        "details": last_status,
+    }
+
+
 app.mount("/mcp", mcp.sse_app())
+app.mount("/mcp-dev", dev_mcp.sse_app())
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static"), html=True), name="static")
 
 
@@ -417,6 +536,47 @@ async def index() -> HTMLResponse:
 @app.get("/api/campaigns")
 async def api_campaigns() -> list[dict[str, str]]:
     return list_campaigns()
+
+
+@app.post("/api/mutate")
+async def api_mutate(payload: dict[str, Any]) -> dict[str, Any]:
+    return mutate(**payload)
+
+
+@app.post("/api/todo-status")
+async def api_todo_status(payload: dict[str, Any]) -> dict[str, Any]:
+    todo_ts = payload.get("todo_ts")
+    status = str(payload.get("status") or "open").lower()
+    comment = payload.get("comment") or ""
+    if not todo_ts:
+        raise ValueError("todo_ts is required")
+
+    if not LOG_FILE.exists():
+        return {"ok": False, "error": "logs file not found"}
+
+    import json as _json
+
+    entries: list[dict[str, Any]] = []
+    with LOG_FILE.open("r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(_json.loads(line))
+            except Exception:
+                continue
+
+    for e in entries:
+        if e.get("type") == "todo" and e.get("ts") == todo_ts:
+            e["done"] = status == "done"
+            e["comment"] = comment
+
+    with LOG_FILE.open("w", encoding="utf-8") as f:
+        for e in entries:
+            f.write(_json.dumps(e, ensure_ascii=False) + "\n")
+
+    return {"ok": True}
 
 
 @app.get("/api/campaigns/{campaign_id}")
