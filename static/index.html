@@ -548,11 +548,14 @@
     }
 
     function renderLogs(logs) {
-      if (!logs.length) {
+      const gameLogs = logs.filter(
+        (entry) => entry.type === "mutate" || entry.type === "history"
+      );
+      if (!gameLogs.length) {
         logsEl.innerHTML = "<p class='muted'>Brak zarejestrowanych mutacji.</p>";
         return;
       }
-      logsEl.innerHTML = logs
+      logsEl.innerHTML = gameLogs
         .map((entry) => {
           const ts = entry.ts || "";
           const op = entry.op || "";

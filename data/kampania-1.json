@@ -3,6 +3,30 @@
   "name": "Kamienny Krąg",
   "day": 14,
   "location": "Miasteczko nad Rzeką",
+  "current_location_id": "miasteczko",
+  "locations": [
+    {
+      "id": "miasteczko",
+      "name": "Miasteczko nad Rzeką",
+      "type": "town",
+      "tags": ["miasto", "bezpieczne"],
+      "description": "Spokojne miasteczko nad rzeką, baza wypadowa drużyny."
+    },
+    {
+      "id": "las",
+      "name": "Las za Traktem",
+      "type": "forest",
+      "tags": ["dzicz", "niebezpieczne"],
+      "description": "Gęsty las, w którym krążą plotki o potworach."
+    },
+    {
+      "id": "loch-pod-mlynem",
+      "name": "Loch pod młynem",
+      "type": "dungeon",
+      "tags": ["loch", "eksploracja"],
+      "description": "Niedawno oczyszczony loch pod starym młynem."
+    }
+  ],
   "notes": "Grupa właśnie wróciła z lochu pod młynem.",
   "characters": [
     {
@@ -28,7 +52,7 @@
         },
         {
           "id": "usb",
-          "name": "Zaklęty pendrive",
+          "name": "Zaczarowany pendrive",
           "qty": 1
         }
       ],
@@ -48,15 +72,21 @@
         "wis": 12,
         "cha": 10
       },
-      "gold": 59,
+      "gold": 54,
       "inventory": [
         {
           "id": "notebook",
           "name": "Zaczarowany notes bugów",
           "qty": 1
+        },
+        {
+          "id": "beer-crate",
+          "name": "Skrzynka piwa",
+          "qty": 2
         }
       ],
-      "notes": "Ma szósty zmysł do znajdowania edge case’ów."
+      "notes": "Ma szósty zmysł do znajdowania edge case'ów.\nZbig wypomina Timowi, że ten nie oddał reszty 5 gp po zakupie piwa."
     }
   ]
 }
+

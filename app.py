@@ -233,10 +233,40 @@ def mutate(
         data["day"] = new_day
 
     elif op == "location_set":
-        if value is None:
+        if value is None and parsed_value is None:
             raise ValueError("value is required for location_set")
-        # Tu value traktujemy jako zwykły string (bez JSON)
-        data["location"] = value
+
+        # Obsługa zarówno prostego stringa, jak i obiektu
+        target_id: str
+        label: str
+        if isinstance(parsed_value, dict):
+            target_id = str(parsed_value.get("id") or parsed_value.get("name") or "")
+            if not target_id:
+                raise ValueError("location_set value object must have 'id' or 'name'")
+            label = str(parsed_value.get("name") or target_id)
+        else:
+            label = str(value if value is not None else parsed_value)
+            target_id = label
+
+        data["location"] = label
+        data["current_location_id"] = target_id
+
+        locations = data.setdefault("locations", [])
+        existing = None
+        for loc in locations:
+            if loc.get("id") == target_id:
+                existing = loc
+                break
+        if existing is None:
+            locations.append(
+                {
+                    "id": target_id,
+                    "name": label,
+                    "type": "place",
+                    "tags": [],
+                    "description": "",
+                }
+            )
 
     # ----------------- Ekwipunek -----------------
 
