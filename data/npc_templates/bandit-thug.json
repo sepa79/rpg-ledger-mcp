@@ -1,0 +1,39 @@
+{
+  "id": "bandit-thug",
+  "name": "Bandyta",
+  "class": "Bandyta (melee)",
+  "level": 1,
+  "hp_roll": "2d8+2",
+  "alignment": "chaotic evil",
+  "persona": "Agresywny, prymitywny zbir. Szuka łatwego łupu, zastrasza słabszych, ucieka gdy przewaga przechodzi na stronę bohaterów.",
+  "stats": {
+    "str": 13,
+    "dex": 12,
+    "int": 8,
+    "wis": 10,
+    "cha": 9
+  },
+  "gold": {
+    "min": 0,
+    "max": 10
+  },
+  "inventory": [
+    {
+      "id": "club",
+      "name": "Pałka bandyty",
+      "qty": 1
+    },
+    {
+      "id": "ration",
+      "name": "Stary suchar",
+      "qty": 1
+    }
+  ],
+  "tags": [
+    "npc",
+    "bandit",
+    "humanoid",
+    "melee"
+  ]
+}
+

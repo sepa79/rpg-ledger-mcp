@@ -1,0 +1,99 @@
+{
+  "id": "kampania-test",
+  "name": "Kampania Testowa",
+  "day": 1,
+  "location": "Karczma Testowa",
+  "current_location_id": "karczma",
+  "notes": "Kampania przeznaczona do testowania MCP / UI. Używaj jej w skryptach i ręcznych testach, żeby nie mieszać stanu głównej kampanii.",
+  "locations": [
+    {
+      "id": "karczma",
+      "name": "Karczma Testowa",
+      "type": "inn",
+      "tags": [
+        "bezpieczne",
+        "start"
+      ],
+      "description": "Neutralne miejsce startowe do testów."
+    },
+    {
+      "id": "las-testowy",
+      "name": "Las Testowy",
+      "type": "forest",
+      "tags": [
+        "dzicz"
+      ],
+      "description": "Prosty las do testowania ruchu po mapie."
+    }
+  ],
+  "connections": [
+    {
+      "from": "karczma",
+      "to": "las-testowy",
+      "type": "road",
+      "distance": 1
+    }
+  ],
+  "characters": [
+    {
+      "id": "test-warrior",
+      "name": "Testowy Wojownik",
+      "class": "Fighter",
+      "level": 1,
+      "xp": 0,
+      "hp": 20,
+      "alignment": "N",
+      "persona": "Neutralny wojownik do testów.",
+      "stats": {
+        "str": 15,
+        "dex": 12,
+        "int": 10,
+        "wis": 10,
+        "cha": 8
+      },
+      "gold": 10,
+      "inventory": [
+        {
+          "id": "test-sword",
+          "name": "Testowy Miecz",
+          "qty": 1
+        },
+        {
+          "id": "test-potion",
+          "name": "Mikstura Testowa",
+          "qty": 2
+        }
+      ],
+      "notes": "Używaj tego bohatera do testowania mutacji HP/gold/xp/ekwipunku."
+    },
+    {
+      "id": "test-mage",
+      "name": "Testowa Magini",
+      "class": "Wizard",
+      "level": 1,
+      "xp": 0,
+      "hp": 12,
+      "alignment": "NG",
+      "persona": "Magini do testowania notatek i ekwipunku.",
+      "stats": {
+        "str": 8,
+        "dex": 12,
+        "int": 16,
+        "wis": 14,
+        "cha": 12
+      },
+      "gold": 5,
+      "inventory": [
+        {
+          "id": "test-staff",
+          "name": "Testowa Laska",
+          "qty": 1
+        }
+      ],
+      "notes": ""
+    }
+  ],
+  "world_flags": {},
+  "quests": [],
+  "factions": []
+}

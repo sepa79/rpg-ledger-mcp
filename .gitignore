@@ -1,12 +1,29 @@
+# Python cache / artifacts
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.so
 
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local logs and runtime data
 logs/
+data/_snapshots/
 
-.env
-*.env
-
+# Misc
 .DS_Store
-Thumbs.db

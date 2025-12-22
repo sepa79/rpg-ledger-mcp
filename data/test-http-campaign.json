@@ -1,0 +1,14 @@
+{
+  "id": "test-http-campaign",
+  "name": "Test HTTP",
+  "day": 1,
+  "location": "",
+  "current_location_id": "",
+  "notes": "",
+  "locations": [],
+  "connections": [],
+  "characters": [],
+  "world_flags": {},
+  "quests": [],
+  "factions": []
+}

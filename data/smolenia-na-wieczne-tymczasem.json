@@ -1,0 +1,153 @@
+{
+  "id": "smolenia-na-wieczne-tymczasem",
+  "name": "Na Wieczne Tymczasem (Smolenia)",
+  "day": 1,
+  "location": "Dom Kultury im. Świętego Zgniłego Żartu",
+  "current_location_id": "dom_kultury",
+  "notes": "Kampania przeznaczona do testowania MCP / UI. Używaj jej w skryptach i ręcznych testach, żeby nie mieszać stanu głównej kampanii.\nHISTORIA KAMPANII:\nDzień 1: Przegląd kabaretów w Domu Kultury im. Świętego Zgniłego Żartu. Podczas premiery Demka Wizerunkowego dochodzi do anomalii rzeczywistości (glitch na żywo, pikselizacja publiczności, stacktrace w powietrzu). Ilja 'Stacktrace' Burak (Mag Debugger) wykrywa w logach, że demko korzysta z pipeline'u MINISTRY_PIPELINE/HOTFIX-POKAZ-NA-ZYWO, artefaktu z ARCHIWUM_FORMULARZY_ZAGINIONYCH oraz anonimowego commitu legacy_guild://anon-commit-42. Ministerstwo (wiceminister Kwartał) rekrutuje Ilję do cichego śledztwa i zgadza się na powołanie małego zespołu: Łotr QA, Księgowa Rzeczywistości, Bard Kabaretowy.",
+  "locations": [
+    {
+      "id": "dom_kultury",
+      "name": "Dom Kultury im. Świętego Zgniłego Żartu",
+      "type": "building",
+      "tags": [
+        "start",
+        "kabaret",
+        "bezpieczne"
+      ],
+      "description": "Główny ośrodek kultury w Smolenii, miejsce premiery Demka Wizerunkowego i pierwszego glitcha rzeczywistości."
+    },
+    {
+      "id": "rynek_smolenii",
+      "name": "Rynek Smolenii",
+      "type": "town",
+      "tags": [
+        "miasto",
+        "targowisko"
+      ],
+      "description": "Centrum miasta, gdzie plotki o anomaliach rozchodzą się szybciej niż ulotki wyborcze."
+    },
+    {
+      "id": "ministerstwo_rzeczywistosci_tymczasowej",
+      "name": "Ministerstwo Rzeczywistości Tymczasowej",
+      "type": "office",
+      "tags": [
+        "ministerstwo",
+        "biurokracja"
+      ],
+      "description": "Labirynt korytarzy, formularzy i pipeline'ów, skąd zarządza się ładem (i bałaganem) w Rzeczpospolitej Tymczasowej."
+    },
+    {
+      "id": "archiwum_formularzy_zaginionych",
+      "name": "Archiwum Formularzy Zaginionych",
+      "type": "archive",
+      "tags": [
+        "tajemnica",
+        "magia-danych"
+      ],
+      "description": "Stare archiwum, w którym podobno lądują wszystkie zgłoszenia, których nikt nie potrafi już zmapować do systemu."
+    },
+    {
+      "id": "osiedle_tymczasowe",
+      "name": "Osiedle Tymczasowe",
+      "type": "district",
+      "tags": [
+        "dzielnica",
+        "blokowisko"
+      ],
+      "description": "Zespół bloków zbudowanych \"tymczasowo\" dwie dekady temu. Miejsce, gdzie zwykli mieszkańcy próbują żyć mimo glitchujących billboardów."
+    }
+  ],
+  "connections": [
+    {
+      "from": "dom_kultury",
+      "to": "rynek_smolenii",
+      "type": "ulica",
+      "distance": 1
+    },
+    {
+      "from": "rynek_smolenii",
+      "to": "ministerstwo_rzeczywistosci_tymczasowej",
+      "type": "aleja",
+      "distance": 1
+    },
+    {
+      "from": "rynek_smolenii",
+      "to": "archiwum_formularzy_zaginionych",
+      "type": "boczna-ulica",
+      "distance": 1
+    },
+    {
+      "from": "rynek_smolenii",
+      "to": "osiedle_tymczasowe",
+      "type": "tramwaj",
+      "distance": 1
+    }
+  ],
+  "characters": [
+    {
+      "name": "Ilja ‘Stacktrace’ Burak",
+      "class": "Mag Debugger",
+      "level": 1,
+      "hp": 11,
+      "xp": 0,
+      "alignment": "LN",
+      "persona": "Zmęczony, ironiczny programista dziedziczny z Rzeczpospolitej Tymczasowej. Uważa, że świat to źle utrzymany system legacy.",
+      "stats": {
+        "str": 8,
+        "dex": 11,
+        "int": 16,
+        "wis": 13,
+        "cha": 12
+      },
+      "gold": 7,
+      "inventory": [
+        {
+          "id": "debug-wand",
+          "name": "Różdżka Logowania (krytycznie przestarzała)",
+          "qty": 1
+        },
+        {
+          "id": "clipboard-scrolls",
+          "name": "Segregator Formularzy F-23/N-404",
+          "qty": 1
+        },
+        {
+          "id": "coffee-talisman",
+          "name": "Amulet Zimnej Kawy w Kubku Firmowym",
+          "qty": 1
+        }
+      ],
+      "notes": "Mag Debugger Zmęczony: spec od logów i rozplątywania spaghetti-zaklęć w Rzeczpospolitej Tymczasowej. Ma opinię tego, który zawsze mówi: 'to nie bug, to feature systemu państwowego'.",
+      "id": "iljastacktraceburak"
+    }
+  ],
+  "world_flags": {},
+  "quests": [],
+  "factions": [
+    {
+      "id": "ministerstwo-rt",
+      "name": "Ministerstwo Rzeczywistości Tymczasowej",
+      "rep": 5,
+      "description": "Centralny organ magokracji biurokratycznej Smolenii. Zarządza pipeline’ami rzeczywistości, wydaje rozporządzenia, które często mają większą moc niż zaklęcia. Oficjalnie dba o stabilność państwa, nieoficjalnie – o to, żeby każdy kryzys dało się nazwać 'tymczasowym'."
+    },
+    {
+      "id": "kosciol-sida",
+      "name": "Kościół Świętego SID-a",
+      "rep": 0,
+      "description": "Religia oparta na kulcie układu dźwiękowego SID z Commodore 64. Kapłani wierzą, że prawdziwa muzyka i objawienie przychodzą z datasette’a, a dobre demko potrafi uleczyć duszę narodu lepiej niż jakakolwiek reforma."
+    },
+    {
+      "id": "zakon-pokeya",
+      "name": "Zakon POKEY-a",
+      "rep": 0,
+      "description": "Technokratyczny zakon czczący układ POKEY z Atari. Wierzą w zbawienie przez optymalizację kodu i czysty sygnał. Utrzymują, że ich maszyna była zawsze lepsza, tylko marketing mieli gorszy – i zamierzają to wreszcie naprawić demkami na żywo."
+    },
+    {
+      "id": "gildia-programistow-dziedzicznych",
+      "name": "Gildia Programistów Dziedzicznych",
+      "rep": 0,
+      "description": "Nieformalna, ale wpływowa gildia specjalistów od legacy-kodu rzeczywistości. Utrzymują i łatają stare systemy, które dawno powinny zostać wyłączone, ale stoją 'tymczasowo' od dekad. Jednocześnie są najemnikami – pracują dla każdego, kto dobrze płaci albo obieca dostęp do ciekawych bugów."
+    }
+  ]
+}

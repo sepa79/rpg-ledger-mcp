@@ -2,29 +2,52 @@
   "id": "kampania-1",
   "name": "Kamienny Krąg",
   "day": 14,
-  "location": "Miasteczko nad Rzeką",
-  "current_location_id": "miasteczko",
+  "location": "Las za Traktem",
+  "current_location_id": "las",
   "locations": [
     {
       "id": "miasteczko",
       "name": "Miasteczko nad Rzeką",
       "type": "town",
-      "tags": ["miasto", "bezpieczne"],
+      "tags": [
+        "miasto",
+        "bezpieczne"
+      ],
       "description": "Spokojne miasteczko nad rzeką, baza wypadowa drużyny."
     },
     {
       "id": "las",
       "name": "Las za Traktem",
       "type": "forest",
-      "tags": ["dzicz", "niebezpieczne"],
+      "tags": [
+        "dzicz",
+        "niebezpieczne"
+      ],
       "description": "Gęsty las, w którym krążą plotki o potworach."
     },
     {
       "id": "loch-pod-mlynem",
       "name": "Loch pod młynem",
       "type": "dungeon",
-      "tags": ["loch", "eksploracja"],
+      "tags": [
+        "loch",
+        "eksploracja"
+      ],
       "description": "Niedawno oczyszczony loch pod starym młynem."
+    }
+  ],
+  "connections": [
+    {
+      "from": "miasteczko",
+      "to": "las",
+      "type": "road",
+      "distance": 1
+    },
+    {
+      "from": "las",
+      "to": "loch-pod-mlynem",
+      "type": "path",
+      "distance": 1
     }
   ],
   "notes": "Grupa właśnie wróciła z lochu pod młynem.",
@@ -36,6 +59,8 @@
       "level": 3,
       "xp": 950,
       "hp": 27,
+      "alignment": "chaotic neutral",
+      "persona": "Znużony, sarkastyczny mag‑programista, który widział już za dużo gorących fixów na produkcji. Reaguje alergicznie na słowa 'to prosta zmiana'. Preferuje spryt i analizę nad brawurą.",
       "stats": {
         "str": 9,
         "dex": 12,
@@ -65,6 +90,8 @@
       "level": 2,
       "xp": 430,
       "hp": 19,
+      "alignment": "neutral good",
+      "persona": "Dociekliwy tester‑łotr, który zawsze szuka edge case'ów i zadaje niewygodne pytania. Stara się robić dobrze drużynie, ale lubi wbić szpilę za pominięte testy.",
       "stats": {
         "str": 10,
         "dex": 15,
@@ -89,4 +116,3 @@
     }
   ]
 }
-

@@ -1,0 +1,39 @@
+{
+  "id": "goblin-scout",
+  "name": "Goblin Zwiadowca",
+  "class": "Goblin (łucznik)",
+  "level": 1,
+  "hp_roll": "2d6",
+  "alignment": "neutral evil",
+  "persona": "Cwany, tchórzliwy zwiadowca. Najpierw strzela z ukrycia, atakuje tylko w przewadze liczebnej, próbuje uciec gdy zostanie sam.",
+  "stats": {
+    "str": 8,
+    "dex": 15,
+    "int": 10,
+    "wis": 9,
+    "cha": 8
+  },
+  "gold": {
+    "min": 1,
+    "max": 6
+  },
+  "inventory": [
+    {
+      "id": "shortbow",
+      "name": "Krótki łuk",
+      "qty": 1
+    },
+    {
+      "id": "arrows",
+      "name": "Kołczan strzał",
+      "qty": 10
+    }
+  ],
+  "tags": [
+    "npc",
+    "goblin",
+    "humanoid",
+    "ranged"
+  ]
+}
+

@@ -11,17 +11,23 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from mcp.server.fastmcp import FastMCP
+import d20
+import networkx as nx
+import random
 
-import datetime
+from rpg_ledger import storage
+from rpg_ledger import npc_factory
+from rpg_ledger import dice_service
+from rpg_ledger import world_service
+from rpg_ledger import mutation_service
+
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-LOG_FILE = Path("/app/logs-dir/logs.jsonl")
-CI_STATUS_FILE = Path("/app/logs-dir/ci-status.json")
 
 mcp = FastMCP("RpgLedger")
 dev_mcp = FastMCP("RpgLedgerDev")
 app = FastAPI(title="RPG Ledger MCP + UI")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,37 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def _campaign_path(campaign_id: str) -> Path:
-    safe = "".join(c for c in campaign_id if c.isalnum() or c in "-_")
-    return DATA_DIR / f"{safe}.json"
-
-
-def _load_campaign(campaign_id: str) -> dict[str, Any]:
-    path = _campaign_path(campaign_id)
-    if not path.exists():
-        raise FileNotFoundError(f"Campaign {campaign_id!r} not found")
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _save_campaign(campaign_id: str, data: dict[str, Any]) -> None:
-    path = _campaign_path(campaign_id)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def _log_event(event: dict[str, Any]) -> None:
-    event = dict(event)
-    event.setdefault(
-        "ts",
-        datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-    )
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with LOG_FILE.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
 def _find_character(data: dict[str, Any], char_id: str) -> dict[str, Any]:
@@ -74,11 +49,14 @@ def _find_character(data: dict[str, Any], char_id: str) -> dict[str, Any]:
 @mcp.tool()
 def list_campaigns() -> list[dict[str, str]]:
     campaigns: list[dict[str, str]] = []
-    if not DATA_DIR.is_dir():
+    if not storage.DATA_DIR.is_dir():
         return campaigns
 
-    for filename in DATA_DIR.iterdir():
+    for filename in storage.DATA_DIR.iterdir():
         if not filename.name.endswith(".json"):
+            continue
+        # Pomijamy pliki szablonów (np. kampania-test.template.json)
+        if filename.name.endswith(".template.json"):
             continue
         try:
             with filename.open("r", encoding="utf-8") as f:
@@ -93,15 +71,462 @@ def list_campaigns() -> list[dict[str, str]]:
 
 @mcp.tool()
 def get_campaign(campaign_id: str) -> dict[str, Any]:
-    return _load_campaign(campaign_id)
+    return storage.load_campaign(campaign_id)
 
 
 @mcp.tool()
 def get_character(campaign_id: str, char_id: str) -> dict[str, Any]:
-    data = _load_campaign(campaign_id)
+    data = storage.load_campaign(campaign_id)
     ch = _find_character(data, char_id)
     return ch
 
+
+@mcp.tool()
+def list_locations(campaign_id: str) -> list[dict[str, Any]]:
+    """Zwróć listę lokacji kampanii (`campaign.locations`)."""
+    data = storage.load_campaign(campaign_id)
+    return list(data.get("locations") or [])
+
+
+@mcp.tool()
+def create_campaign(
+    campaign_id: str,
+    name: Optional[str] = None,
+    from_campaign_id: Optional[str] = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    """Utwórz nową kampanię i zapisz ją w `data/{campaign_id}.json`.
+
+    - `campaign_id` – docelowe id kampanii (nazwa pliku bez `.json`), np. `smolenia-na-wieczne-tymczasem`
+    - `name` – opcjonalna nazwa wyświetlana (jeśli brak, użyje `campaign_id`)
+    - `from_campaign_id`:
+        - jeśli **pominięte** / `null` → tworzona jest **pusta, nowa kampania** z bazową strukturą
+        - jeśli podane → nowa kampania będzie **kopią istniejącej** (snapshot), z podmienionym `id` i `name`
+    - `overwrite` – jeśli `true`, pozwala nadpisać istniejący plik kampanii o tym samym id
+
+    Użycie:
+    - **nowa kampania od zera**:
+        - `create_campaign(campaign_id=\"smolenia-na-wieczne-tymczasem\", name=\"Smolenia na wieczne tymczasem\")`
+        - *nie ustawiaj* `from_campaign_id`, jeśli nie chcesz kopiować starej kampanii.
+    - **kopiowanie istniejącej kampanii jako szablonu**:
+        - `create_campaign(campaign_id=\"kampania-kopia\", from_campaign_id=\"kampania-1\")`
+
+    Skutek uboczny: zapis pliku `data/{campaign_id}.json` oraz wpis w logu kampanii (type=\"history\").
+    """
+    path = storage.campaign_path(campaign_id)
+    if path.exists() and not overwrite:
+        raise ValueError(f"campaign {campaign_id!r} already exists (set overwrite=True to replace)")
+
+    if from_campaign_id:
+        src = storage.load_campaign(from_campaign_id)
+        data = json.loads(json.dumps(src))
+        data["id"] = campaign_id
+        data["name"] = name or src.get("name") or campaign_id
+    else:
+        data = {
+            "id": campaign_id,
+            "name": name or campaign_id,
+            "day": 1,
+            "location": "",
+            "current_location_id": "",
+            "notes": "",
+            "locations": [],
+            "connections": [],
+            "characters": [],
+            "world_flags": {},
+            "quests": [],
+            "factions": [],
+        }
+
+    storage.save_campaign(campaign_id, data)
+    storage.log_event(
+        {
+            "type": "history",
+            "campaign_id": campaign_id,
+            "char_id": None,
+            "amount": None,
+            "text": f"create_campaign from={from_campaign_id}",
+            "value": {
+                "from_campaign_id": from_campaign_id,
+                "name": data.get("name"),
+            },
+        }
+    )
+    return data
+
+
+@mcp.tool()
+def create_character(
+    campaign_id: str,
+    character: dict[str, Any],
+) -> dict[str, Any]:
+    """Dodaj nową postać do kampanii.
+
+    - campaign_id: id kampanii
+    - character: słownik z danymi postaci (name, class, level, hp, xp, stats, gold, inventory, notes, itp.)
+
+    Jeśli character.id jest puste, zostanie wygenerowane z name w formie slug.
+    Skutek uboczny: zapis kampanii oraz wpis typu \"mutate\" (op=\"create_character\").
+    """
+    data = storage.load_campaign(campaign_id)
+    chars: list[dict[str, Any]] = data.setdefault("characters", [])
+
+    payload = dict(character)
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("character.name is required")
+
+    cid_raw = str(payload.get("id") or "")
+    if not cid_raw:
+        base = "".join(c for c in name.lower() if c.isalnum() or c in "-_") or "char"
+    else:
+        base = "".join(c for c in cid_raw if c.isalnum() or c in "-_") or "char"
+
+    existing_ids = {str(c.get("id") or "") for c in chars if c.get("id")}
+    candidate = base
+    suffix = 2
+    while candidate in existing_ids:
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+
+    payload["id"] = candidate
+    chars.append(payload)
+
+    storage.save_campaign(campaign_id, data)
+    storage.log_event(
+        {
+            "type": "mutate",
+            "op": "create_character",
+            "campaign_id": campaign_id,
+            "char_id": candidate,
+            "amount": None,
+            "text": f"create_character {name}",
+            "value": {"id": candidate, "name": name},
+        }
+    )
+    return data
+
+
+@mcp.tool()
+def update_character(
+    campaign_id: str,
+    char_id: str,
+    patch: dict[str, Any],
+) -> dict[str, Any]:
+    """Zaktualizuj istniejącą postać w kampanii.
+
+    - campaign_id: id kampanii
+    - char_id: id postaci do aktualizacji
+    - patch: słownik z polami do nadpisania (np. name, class, level, hp, stats, gold, notes)
+
+    Skutek uboczny: zapis kampanii oraz wpis typu \"mutate\" (op=\"update_character\").
+    """
+    data = storage.load_campaign(campaign_id)
+    ch = _find_character(data, char_id)
+
+    allowed_simple = [
+        "name",
+        "class",
+        "level",
+        "xp",
+        "hp",
+        "alignment",
+        "persona",
+        "gold",
+        "notes",
+    ]
+
+    for key in allowed_simple:
+        if key in patch and patch[key] is not None:
+            ch[key] = patch[key]
+
+    if "stats" in patch and isinstance(patch["stats"], dict):
+        ch["stats"] = dict(patch["stats"])
+    if "inventory" in patch and isinstance(patch["inventory"], list):
+        ch["inventory"] = list(patch["inventory"])
+
+    storage.save_campaign(campaign_id, data)
+    storage.log_event(
+        {
+            "type": "mutate",
+            "op": "update_character",
+            "campaign_id": campaign_id,
+            "char_id": char_id,
+            "amount": None,
+            "text": "update_character",
+            "value": patch,
+        }
+    )
+    return data
+
+
+@mcp.tool()
+def upsert_location(
+    campaign_id: str,
+    location: dict[str, Any],
+) -> dict[str, Any]:
+    """Dodaj lub zaktualizuj jedną lokację w kampanii.
+
+    - campaign_id: id kampanii
+    - location: obiekt JSON z polami np. id, name, type, tags, description
+
+    Jeśli lokacja z podanym id (lub name) istnieje, zostanie zaktualizowana.
+    Jeśli nie istnieje, zostanie dodana nowa lokacja.
+
+    Skutek uboczny: zapis kampanii oraz wpis typu \"mutate\" (op=\"upsert_location\").
+    """
+    return mutation_service.mutate(
+        campaign_id=campaign_id,
+        op="upsert_location",
+        value=location,
+    )
+
+
+@mcp.tool()
+def delete_location(
+    campaign_id: str,
+    location_id_or_name: str,
+) -> dict[str, Any]:
+    """Usuń lokację z kampanii na podstawie jej id lub nazwy.
+
+    - campaign_id: id kampanii
+    - location_id_or_name: id lub nazwa lokacji do usunięcia
+
+    Skutek uboczny: usunięcie lokacji z `campaign.locations` oraz wpis typu
+    \"mutate\" (op=\"delete_location\").
+    """
+    return mutation_service.mutate(
+        campaign_id=campaign_id,
+        op="delete_location",
+        value=location_id_or_name,
+    )
+
+
+@mcp.tool()
+def list_factions(campaign_id: str) -> list[dict[str, Any]]:
+    """Zwróć listę frakcji kampanii (`campaign.factions`)."""
+    data = storage.load_campaign(campaign_id)
+    return list(data.get("factions") or [])
+
+
+@mcp.tool()
+def upsert_faction(
+    campaign_id: str,
+    faction: dict[str, Any],
+) -> dict[str, Any]:
+    """Dodaj lub zaktualizuj frakcję w kampanii.
+
+    - campaign_id: id kampanii
+    - faction: obiekt JSON z polami np. id, name, description, rep
+
+    Jeśli frakcja z podanym id istnieje, pola name/description/rep zostaną
+    zaktualizowane (rep ustawione na podaną wartość). Jeśli nie istnieje,
+    powstanie nowa frakcja.
+    """
+    return mutation_service.mutate(
+        campaign_id=campaign_id,
+        op="faction_upsert",
+        value=faction,
+    )
+
+
+@mcp.tool()
+def faction_rep_add(
+    campaign_id: str,
+    faction_id: str,
+    delta: int,
+    name: Optional[str] = None,
+) -> dict[str, Any]:
+    """Zwiększ/zmniejsz reputację frakcji w kampanii.
+
+    - campaign_id: id kampanii
+    - faction_id: id frakcji (np. \"ministerstwo-rt\")
+    - delta: zmiana reputacji (może być ujemna)
+    - name: opcjonalna nazwa frakcji; jeśli frakcja nie istnieje, zostanie utworzona
+
+    Skutek uboczny: aktualizacja `campaign.factions` oraz wpis typu \"mutate\"
+    (op=\"faction_rep_add\").
+    """
+    payload = {
+        "id": faction_id,
+        "delta": delta,
+    }
+    if name is not None:
+        payload["name"] = name
+    return mutation_service.mutate(
+        campaign_id=campaign_id,
+        op="faction_rep_add",
+        value=payload,
+    )
+
+
+@mcp.tool()
+def roll_dice(
+    expr: str,
+    campaign_id: Optional[str] = None,
+    note: Optional[str] = None,
+    log: bool = True,
+) -> dict[str, Any]:
+    """Wykonaj rzut kośćmi w notacji np. \"1d20+5\".
+
+    - expr: wyrażenie kościane (np. \"2d6+3\", \"1d20+5\")
+    - campaign_id: opcjonalne id kampanii, jeśli chcesz zalogować wynik w historii
+    - note: dodatkowy opis (np. \"atak Tima\"), dołączany do tekstu w logu
+    - log: jeśli True i podano campaign_id, wynik trafia do loga (type=\"history\")
+    """
+    try:
+        roll = d20.roll(expr)
+    except Exception as e:
+        raise ValueError(f"invalid dice expression {expr!r}: {e}")
+
+    total = int(roll.total)
+    rendered = str(roll)
+
+    result: dict[str, Any] = {
+        "expression": expr,
+        "total": total,
+        "rendered": rendered,
+    }
+
+    if log and campaign_id:
+        text_parts = [f"Rzut {expr} = {total} ({rendered})"]
+        if note:
+            text_parts.append(f"- {note}")
+        storage.log_event(
+            {
+                "type": "history",
+                "campaign_id": campaign_id,
+                "char_id": None,
+                "amount": None,
+                "text": " ".join(text_parts),
+                "value": {
+                    "expr": expr,
+                    "total": total,
+                    "rendered": rendered,
+                },
+            }
+        )
+        result["logged"] = True
+    else:
+        result["logged"] = False
+
+    return result
+
+
+@mcp.tool()
+def world_find_route(
+    campaign_id: str,
+    from_id: Optional[str] = None,
+    to_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Znajdź trasę między lokacjami kampanii.
+
+    - campaign_id: id kampanii
+    - from_id: id lokacji startowej (domyślnie current_location_id lub lokacja kampanii)
+    - to_id: id lokacji docelowej (wymagane)
+
+    Korzysta z campaign.locations (id, name, type, tags, description)
+    oraz opcjonalnego campaign.connections: lista obiektów
+    {\"from\", \"to\", \"distance\"?}. Jeśli connections brak, zakłada bezpośrednie
+    przejście między from_id i to_id.
+    """
+    data = storage.load_campaign(campaign_id)
+    locations = data.get("locations") or []
+    if not locations:
+        raise ValueError("campaign has no locations defined")
+
+    id_to_loc: dict[str, dict[str, Any]] = {}
+    for loc in locations:
+        lid = str(loc.get("id") or "")
+        if not lid:
+            continue
+        id_to_loc[lid] = loc
+
+    if not id_to_loc:
+        raise ValueError("no valid locations with 'id' in campaign")
+
+    current_id = str(data.get("current_location_id") or "").strip()
+    if not current_id:
+        current_name = str(data.get("location") or "").strip()
+        for lid, loc in id_to_loc.items():
+            if str(loc.get("name") or "").strip() == current_name:
+                current_id = lid
+                break
+        if not current_id:
+            current_id = next(iter(id_to_loc.keys()))
+
+    start_id = from_id or current_id
+    if not start_id:
+        raise ValueError("from_id could not be determined")
+    if to_id is None:
+        raise ValueError("to_id is required")
+    start_id = str(start_id)
+    to_id = str(to_id)
+
+    if start_id not in id_to_loc:
+        raise ValueError(f"unknown from_id: {start_id!r}")
+    if to_id not in id_to_loc:
+        raise ValueError(f"unknown to_id: {to_id!r}")
+
+    g = nx.Graph()
+    for lid in id_to_loc.keys():
+        g.add_node(lid)
+
+    connections = data.get("connections") or []
+    if connections:
+        for conn in connections:
+            a = str(conn.get("from") or "")
+            b = str(conn.get("to") or "")
+            if not a or not b:
+                continue
+            if a not in id_to_loc or b not in id_to_loc:
+                continue
+            distance = conn.get("distance")
+            try:
+                weight = float(distance) if distance is not None else 1.0
+            except Exception:
+                weight = 1.0
+            g.add_edge(a, b, weight=weight, meta=conn)
+    else:
+        g.add_edge(start_id, to_id, weight=1.0, meta=None)
+
+    try:
+        path_ids = nx.shortest_path(g, start_id, to_id, weight="weight")
+        total_weight = nx.path_weight(g, path_ids, weight="weight")
+    except Exception as e:
+        raise ValueError(f"cannot find route from {start_id!r} to {to_id!r}: {e}")
+
+    path_locs = [
+        {
+            "id": lid,
+            "name": id_to_loc[lid].get("name") or lid,
+            "type": id_to_loc[lid].get("type"),
+            "tags": id_to_loc[lid].get("tags"),
+        }
+        for lid in path_ids
+    ]
+
+    edges: List[dict[str, Any]] = []
+    for a, b in zip(path_ids, path_ids[1:]):
+        data_edge = g.get_edge_data(a, b) or {}
+        meta = data_edge.get("meta") or {}
+        edges.append(
+            {
+                "from": a,
+                "to": b,
+                "distance": data_edge.get("weight"),
+                "meta": meta,
+            }
+        )
+
+    return {
+        "campaign_id": campaign_id,
+        "from_id": start_id,
+        "to_id": to_id,
+        "path": path_locs,
+        "total_distance": total_weight,
+        "edges": edges,
+    }
 
 
 @mcp.tool()
@@ -113,303 +538,36 @@ def mutate(
     text: Optional[str] = None,
     value: Optional[Any] = None,
 ) -> dict[str, Any]:
-    """Modyfikacja stanu kampanii / postaci.
+    """Modyfikacja stanu kampanii / postaci / świata.
 
-    Obsługiwane op-y (rozszerzalne):
+    Parametr `op` określa rodzaj operacji. Najważniejsze:
 
-    - gold_add           – zmiana złota postaci (wymaga char_id, amount)
-    - hp_add             – zmiana HP postaci (wymaga char_id, amount)
-    - xp_add             – zmiana XP postaci (wymaga char_id, amount)
-    - note_append        – dopisz notkę (jeśli jest char_id → do postaci, inaczej do kampanii)
+    - postacie: `gold_add`, `hp_add`, `xp_add`, `note_append`, `char_note_add`,
+      `campaign_note_add`, `alignment_set`, `persona_set`,
+      `inventory_add`, `inventory_remove`
+    - czas / miejsce: `day_add`, `day_set`, `location_set`
+    - lokacje:
+      - `upsert_location` – dodanie lub aktualizacja lokacji na podstawie
+        `value` (JSON z polami np. `id`, `name`, `type`, `tags`, `description`)
+      - `delete_location` – usunięcie lokacji na podstawie id lub nazwy
+    - kampania: `update_campaign` – twarda edycja pól kampanii (name/notes/day/location/current_location_id)
+    - świat / questy / frakcje: `world_flag_set`, `quest_update`, `faction_rep_add`
+    - usuwanie postaci: `delete_character` (wymaga `char_id`)
+    - sam log historii: `history_log` (tylko wpis do loga, bez modyfikacji kampanii)
 
-    Dodatkowe op-y dla pełnego legera:
-
-    - char_note_add      – dopisz notkę TYLKO do postaci (wymaga char_id, text)
-    - campaign_note_add  – dopisz notkę TYLKO do kampanii (wymaga text)
-    - day_add            – dodaj do dnia kampanii (amount)
-    - day_set            – ustaw dzień kampanii (amount)
-    - location_set       – ustaw lokację kampanii (value jako string)
-    - inventory_add      – dodaj przedmiot do ekwipunku postaci
-                           value: JSON { "id": str, "name"?: str, "qty"?: int }
-    - inventory_remove   – usuń / zmniejsz ilość przedmiotu w ekwipunku postaci
-                           value: JSON { "id": str, "qty"?: int }
-    - world_flag_set     – flaga stanu świata
-                           value: JSON { "key": str, "value": any }
-    - quest_update       – utwórz / zaktualizuj questa
-                           value: JSON { "id": str, "title"?: str, "status"?: str, "notes"?: str }
-    - faction_rep_add    – zmień reputację u frakcji
-                           value: JSON { "id": str, "name"?: str, "delta"?: int }
-    - history_log        – tylko wpis do historii (bez modyfikacji kampanii),
-                           value: dowolny JSON reprezentujący zdarzenie
+    Pełna implementacja i walidacja znajduje się w rpg_ledger.mutation_service.mutate.
     """
-    data = _load_campaign(campaign_id)
-
-    character: Optional[dict[str, Any]] = None
-    if char_id is not None:
-        character = _find_character(data, char_id)
-
-    def require_amount() -> int:
-        if amount is None:
-            raise ValueError("amount is required for this operation")
-        return int(amount)
-
-    # Parsowanie value jako JSON (jeśli to ma sens)
-    parsed_value: Any
-    if value is None:
-        parsed_value = None
-    elif isinstance(value, str):
-        try:
-            parsed_value = json.loads(value)
-        except Exception:
-            parsed_value = value
-    else:
-        parsed_value = value
-
-    # ----------------- Operacje na postaciach -----------------
-
-    if op == "gold_add":
-        if character is None:
-            raise ValueError("char_id is required for gold_add")
-        delta = require_amount()
-        current = int(character.get("gold") or 0)
-        character["gold"] = current + delta
-
-    elif op == "hp_add":
-        if character is None:
-            raise ValueError("char_id is required for hp_add")
-        delta = require_amount()
-        current = int(character.get("hp") or 0)
-        new_hp = current + delta
-        # Prosty clamp na 0, bez max_hp (na razie)
-        if new_hp < 0:
-            new_hp = 0
-        character["hp"] = new_hp
-
-    elif op == "xp_add":
-        if character is None:
-            raise ValueError("char_id is required for xp_add")
-        delta = require_amount()
-        current = int(character.get("xp") or 0)
-        character["xp"] = current + delta
-
-    elif op == "note_append":
-        # Zachowujemy wsteczną kompatybilność:
-        # jeśli jest char_id → notka do postaci, inaczej do kampanii.
-        target = character if character is not None else data
-        if not text:
-            raise ValueError("text is required for note_append")
-        existing = target.get("notes") or ""
-        if existing and not existing.endswith("\n"):
-            existing += "\n"
-        target["notes"] = existing + text
-
-    elif op == "char_note_add":
-        if character is None:
-            raise ValueError("char_id is required for char_note_add")
-        if not text:
-            raise ValueError("text is required for char_note_add")
-        existing = character.get("notes") or ""
-        if existing and not existing.endswith("\n"):
-            existing += "\n"
-        character["notes"] = existing + text
-
-    elif op == "campaign_note_add":
-        if not text:
-            raise ValueError("text is required for campaign_note_add")
-        existing = data.get("notes") or ""
-        if existing and not existing.endswith("\n"):
-            existing += "\n"
-        data["notes"] = existing + text
-
-    # ----------------- Czas / miejsce -----------------
-
-    elif op == "day_add":
-        delta = require_amount()
-        current = int(data.get("day") or 0)
-        data["day"] = current + delta
-
-    elif op == "day_set":
-        new_day = require_amount()
-        data["day"] = new_day
-
-    elif op == "location_set":
-        if value is None and parsed_value is None:
-            raise ValueError("value is required for location_set")
-
-        # Obsługa zarówno prostego stringa, jak i obiektu
-        target_id: str
-        label: str
-        if isinstance(parsed_value, dict):
-            target_id = str(parsed_value.get("id") or parsed_value.get("name") or "")
-            if not target_id:
-                raise ValueError("location_set value object must have 'id' or 'name'")
-            label = str(parsed_value.get("name") or target_id)
-        else:
-            label = str(value if value is not None else parsed_value)
-            target_id = label
-
-        data["location"] = label
-        data["current_location_id"] = target_id
-
-        locations = data.setdefault("locations", [])
-        existing = None
-        for loc in locations:
-            if loc.get("id") == target_id:
-                existing = loc
-                break
-        if existing is None:
-            locations.append(
-                {
-                    "id": target_id,
-                    "name": label,
-                    "type": "place",
-                    "tags": [],
-                    "description": "",
-                }
-            )
-
-    # ----------------- Ekwipunek -----------------
-
-    elif op == "inventory_add":
-        if character is None:
-            raise ValueError("char_id is required for inventory_add")
-        if not isinstance(parsed_value, dict) or "id" not in parsed_value:
-            raise ValueError("inventory_add requires JSON in 'value' with at least 'id'")
-        item_id = str(parsed_value["id"])
-        name = str(parsed_value.get("name", item_id))
-        qty_raw = parsed_value.get("qty", 1)
-        qty = int(qty_raw)
-        if qty <= 0:
-            raise ValueError("qty for inventory_add must be > 0")
-        inventory = character.setdefault("inventory", [])
-        existing = None
-        for it in inventory:
-            if it.get("id") == item_id:
-                existing = it
-                break
-        if existing is not None:
-            existing["qty"] = int(existing.get("qty") or 0) + qty
-        else:
-            inventory.append({"id": item_id, "name": name, "qty": qty})
-
-    elif op == "inventory_remove":
-        if character is None:
-            raise ValueError("char_id is required for inventory_remove")
-        if not isinstance(parsed_value, dict) or "id" not in parsed_value:
-            raise ValueError("inventory_remove requires JSON in 'value' with at least 'id'")
-        item_id = str(parsed_value["id"])
-        qty_raw = parsed_value.get("qty", 1)
-        qty = int(qty_raw)
-        if qty <= 0:
-            raise ValueError("qty for inventory_remove must be > 0")
-        inventory = character.setdefault("inventory", [])
-        remaining: list[dict[str, Any]] = []
-        for it in inventory:
-            if it.get("id") != item_id:
-                remaining.append(it)
-                continue
-            current_qty = int(it.get("qty") or 0)
-            new_qty = current_qty - qty
-            if new_qty > 0:
-                it["qty"] = new_qty
-                remaining.append(it)
-            # jeśli <= 0 → item znika całkiem
-        character["inventory"] = remaining
-
-    # ----------------- Stan świata / questy / frakcje -----------------
-
-    elif op == "world_flag_set":
-        if not isinstance(parsed_value, dict) or "key" not in parsed_value:
-            raise ValueError("world_flag_set requires JSON in 'value' with 'key' and 'value'")
-        key = str(parsed_value["key"])
-        val = parsed_value.get("value")
-        flags = data.setdefault("world_flags", {})
-        flags[key] = val
-
-    elif op == "quest_update":
-        if not isinstance(parsed_value, dict) or "id" not in parsed_value:
-            raise ValueError("quest_update requires JSON in 'value' with at least 'id'")
-        qid = str(parsed_value["id"])
-        quests = data.setdefault("quests", [])
-        existing = None
-        for q in quests:
-            if q.get("id") == qid:
-                existing = q
-                break
-        if existing is None:
-            existing = {
-                "id": qid,
-                "title": str(parsed_value.get("title", qid)),
-                "status": str(parsed_value.get("status", "open")),
-                "notes": parsed_value.get("notes"),
-            }
-            quests.append(existing)
-        else:
-            if "title" in parsed_value and parsed_value["title"] is not None:
-                existing["title"] = str(parsed_value["title"])
-            if "status" in parsed_value and parsed_value["status"] is not None:
-                existing["status"] = str(parsed_value["status"])
-            if "notes" in parsed_value:
-                existing["notes"] = parsed_value["notes"]
-
-    elif op == "faction_rep_add":
-        if not isinstance(parsed_value, dict) or "id" not in parsed_value:
-            raise ValueError("faction_rep_add requires JSON in 'value' with at least 'id'")
-        fid = str(parsed_value["id"])
-        delta_raw = parsed_value.get("delta", 0)
-        delta = int(delta_raw)
-        name = str(parsed_value.get("name", fid))
-        factions = data.setdefault("factions", [])
-        existing = None
-        for f in factions:
-            if f.get("id") == fid:
-                existing = f
-                break
-        if existing is None:
-            existing = {"id": fid, "name": name, "rep": delta}
-            factions.append(existing)
-        else:
-            existing["name"] = name
-            existing["rep"] = int(existing.get("rep") or 0) + delta
-
-    # ----------------- Tylko log historii -----------------
-
-    elif op == "history_log":
-        # Nie modyfikujemy kampanii, tylko zapisujemy zdarzenie.
-        _log_event(
-            {
-                "type": "history",
-                "campaign_id": campaign_id,
-                "char_id": char_id,
-                "amount": amount,
-                "text": text,
-                "value": parsed_value,
-            }
-        )
-        return data
-
-    else:
-        raise ValueError(f"Unknown op: {op!r}")
-
-    # Zapis zmian i log standardowego mutowania
-    _save_campaign(campaign_id, data)
-
-    _log_event(
-        {
-            "type": "mutate",
-            "op": op,
-            "campaign_id": campaign_id,
-            "char_id": char_id,
-            "amount": amount,
-            "text": text,
-            "value": value,
-        }
+    return mutation_service.mutate(
+        campaign_id=campaign_id,
+        op=op,
+        char_id=char_id,
+        amount=amount,
+        text=text,
+        value=value,
     )
 
-    return data
 
-
-@mcp.tool()
+@dev_mcp.tool()
 def dev_todo(
     summary: str,
     details: Optional[str] = None,
@@ -419,12 +577,13 @@ def dev_todo(
 ) -> dict[str, Any]:
     """Zapisz TODO dla dalszego rozwoju legera.
 
-    Ubzyj tego narzdzia z poziomu MG/AI, aby odnotowab brakujc funkcjonalnoci
-    (np. nowy typ mutacji, raport, integracj itp.).
+    Użyj tego narzędzia z poziomu MG/AI, aby odnotować brakującą funkcjonalność
+    (np. nowy typ mutacji, raport, integrację itp.).
 
-    Zapis trafia do tego samego logu co inne zdarzenia (logs.jsonl) z typem "todo".
+    Zapis trafia do osobnego logu TODO (dev-todos.jsonl) z typem "todo",
+    odczytywanego przez Dev MCP oraz /api/dev-todos.
     """
-    _log_event(
+    storage.log_event(
         {
             "type": "todo",
             "summary": summary,
@@ -434,50 +593,87 @@ def dev_todo(
             "char_id": char_id,
             "done": False,
             "comment": "",
-        }
+        },
+        file=storage.DEV_TODO_FILE,
     )
     return {"ok": True}
+
+
+def _read_dev_todos(limit: int = 100) -> list[dict[str, Any]]:
+    return storage.read_dev_todos(limit=limit)
 
 
 @dev_mcp.tool()
 def dev_get_logs(
     limit: int = 100,
     event_type: Optional[str] = None,
+    campaign_id: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """Zwróć ostatnie wpisy z logs.jsonl.
+    """Zwróć ostatnie wpisy z logów.
 
-    Użyteczne dla diagnostyki z poziomu Dev MCP.
-    Opcjonalnie można zawęzić po polu "type" (np. "mutate", "todo", "history").
+    - jeśli podano campaign_id, czyta tylko log tej kampanii,
+    - w przeciwnym razie czyta globalny logs.jsonl.
     """
-    if not LOG_FILE.exists():
-        return []
-    entries: List[dict[str, Any]] = []
-    with LOG_FILE.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except Exception:
-                continue
-            if event_type and obj.get("type") != event_type:
-                continue
-            entries.append(obj)
-    entries.sort(key=lambda e: e.get("ts", ""))
-    if limit and limit > 0:
-        entries = entries[-limit:]
-    entries.reverse()
-    return entries
+    return storage.read_logs(limit=limit, event_type=event_type, campaign_id=campaign_id)
 
 
 @dev_mcp.tool()
 def dev_get_todos(limit: int = 50) -> list[dict[str, Any]]:
-    """Zwróć ostatnie TODO zapisane przez dev_todo.
+    """Zwróć ostatnie TODO zapisane przez dev_todo."""
+    return _read_dev_todos(limit=limit)
 
-    Filtrowane po type == "todo" w logs.jsonl.
+
+@mcp.tool()
+def spawn_npc_group(
+    campaign_id: str,
+    template_id: str,
+    count: int = 1,
+    group_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Wygeneruj grupę NPC na podstawie szablonu z data/npc_templates.
+
+    - campaign_id: id kampanii
+    - template_id: id szablonu (np. \"bandit-thug\")
+    - count: ilu NPC wygenerować (domyślnie 1)
+    - group_id: opcjonalne id grupy (npc_group_id); domyślnie template_id + timestamp
     """
-    return dev_get_logs(limit=limit, event_type="todo")
+    if count <= 0:
+        raise ValueError("count must be > 0")
+
+    data = storage.load_campaign(campaign_id)
+    template = storage.load_npc_template(template_id)
+
+    data, group_id, new_ids = npc_factory.spawn_group(
+        campaign=data,
+        template=template,
+        template_id=template_id,
+        count=count,
+        group_id=group_id,
+    )
+
+    storage.save_campaign(campaign_id, data)
+    storage.log_event(
+        {
+            "type": "history",
+            "campaign_id": campaign_id,
+            "char_id": None,
+            "amount": None,
+            "text": f"dev_spawn_npc_group template={template_id} group_id={group_id} count={count}",
+            "value": {
+                "template_id": template_id,
+                "group_id": group_id,
+                "npc_ids": new_ids,
+            },
+        }
+    )
+
+    return {
+        "ok": True,
+        "campaign_id": campaign_id,
+        "template_id": template_id,
+        "group_id": group_id,
+        "npc_ids": new_ids,
+    }
 
 
 @dev_mcp.tool()
@@ -485,8 +681,7 @@ def dev_request_restart(target: str = "stack") -> dict[str, Any]:
     """Zgłoś prośbę o restart stacka / serwisów.
 
     NIE wykonuje restartu samodzielnie – tylko zapisuje zdarzenie
-    type == "dev_restart_request" w logs.jsonl. Skrypt CI / operator
-    może ten log obserwować i wykonać właściwy restart.
+    type == "dev_restart_request" w logs.jsonl.
 
     target: "stack", "gameserver", "mcp".
     """
@@ -497,22 +692,17 @@ def dev_request_restart(target: str = "stack") -> dict[str, Any]:
         "type": "dev_restart_request",
         "target": target,
     }
-    _log_event(payload)
+    storage.log_event(payload)
     return {"ok": True, "requested": target}
 
 
 @dev_mcp.tool()
 def dev_get_ci_status() -> dict[str, Any]:
-    """Zwróć status deployu/CI z pliku ci-status.json.
-
-    Pipeline CI może zapisywać do /app/logs-dir/ci-status.json
-    np. {"status": "ok" | "building" | "failed", ...}.
-    Jeśli plik nie istnieje albo jest niepoprawny, zwracamy "unknown".
-    """
-    if not CI_STATUS_FILE.exists():
+    """Zwróć status deployu/CI z pliku ci-status.json."""
+    if not storage.CI_STATUS_FILE.exists():
         return {"status": "unknown"}
     try:
-        with CI_STATUS_FILE.open("r", encoding="utf-8") as f:
+        with storage.CI_STATUS_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
         return {"status": "unknown"}
@@ -529,11 +719,7 @@ def dev_wait_for_deploy(
     timeout_seconds: int = 120,
     poll_interval_seconds: int = 5,
 ) -> dict[str, Any]:
-    """Czekaj aż CI/deploy osiągnie zadany status.
-
-    Blokujący call po stronie Dev MCP: w pętli odpytuje dev_get_ci_status()
-    co poll_interval_seconds, maksymalnie przez timeout_seconds.
-    """
+    """Czekaj aż CI/deploy osiągnie zadany status."""
     start = time.time()
     last_status: dict[str, Any] = {}
     while True:
@@ -552,6 +738,55 @@ def dev_wait_for_deploy(
     }
 
 
+@mcp.tool()
+def save_campaign_snapshot(campaign_id: str, slot: str = "initial") -> dict[str, Any]:
+    """Zapisz migawkę kampanii do pliku data/_snapshots/{campaign_id}.{slot}.json.
+
+    Skutek uboczny: zapis pliku snapshotu oraz wpis w logu kampanii (type=\"history\").
+    """
+    data = storage.load_campaign(campaign_id)
+    storage.SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    path = storage.snapshot_path(campaign_id, slot)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    storage.log_event(
+        {
+            "type": "history",
+            "campaign_id": campaign_id,
+            "char_id": None,
+            "amount": None,
+            "text": f"save_campaign_snapshot slot={slot}",
+            "value": {"slot": slot, "path": str(path)},
+        }
+    )
+    return {"ok": True, "campaign_id": campaign_id, "slot": slot, "path": str(path)}
+
+
+@mcp.tool()
+def restore_campaign_snapshot(campaign_id: str, slot: str = "initial") -> dict[str, Any]:
+    """Przywróć kampanię z wcześniej zapisanego snapshotu.
+
+    Skutek uboczny: nadpisuje plik kampanii oraz dopisuje wpis do logu (type=\"history\").
+    """
+    path = storage.snapshot_path(campaign_id, slot)
+    if not path.exists():
+        raise FileNotFoundError(f"snapshot {campaign_id!r} slot {slot!r} not found")
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    storage.save_campaign(campaign_id, data)
+    storage.log_event(
+        {
+            "type": "history",
+            "campaign_id": campaign_id,
+            "char_id": None,
+            "amount": None,
+            "text": f"restore_campaign_snapshot slot={slot}",
+            "value": {"slot": slot, "path": str(path)},
+        }
+    )
+    return data
+
+
 app.mount("/mcp", mcp.sse_app())
 app.mount("/mcp-dev", dev_mcp.sse_app())
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static"), html=True), name="static")
@@ -568,6 +803,40 @@ async def api_campaigns() -> list[dict[str, str]]:
     return list_campaigns()
 
 
+@app.post("/api/campaigns/create")
+async def api_create_campaign(payload: dict[str, Any]) -> dict[str, Any]:
+    """HTTP API do tworzenia kampanii (wrapper na MCP create_campaign)."""
+    return create_campaign(**payload)
+
+
+@app.get("/api/factions/{campaign_id}")
+async def api_factions(campaign_id: str) -> list[dict[str, Any]]:
+    """HTTP API: zwróć frakcje kampanii (wrapper na list_factions)."""
+    return list_factions(campaign_id)
+
+
+@app.post("/api/factions/{campaign_id}/rep")
+async def api_faction_rep(
+    campaign_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """HTTP API: zmień reputację frakcji (wrapper na faction_rep_add)."""
+    faction_id = str(payload.get("faction_id") or "").strip()
+    if not faction_id:
+        raise ValueError("faction_id is required")
+    try:
+        delta = int(payload.get("delta"))
+    except Exception:
+        raise ValueError("delta must be an integer")
+    name = payload.get("name")
+    return faction_rep_add(
+        campaign_id=campaign_id,
+        faction_id=faction_id,
+        delta=delta,
+        name=name,
+    )
+
+
 @app.post("/api/mutate")
 async def api_mutate(payload: dict[str, Any]) -> dict[str, Any]:
     return mutate(**payload)
@@ -581,13 +850,13 @@ async def api_todo_status(payload: dict[str, Any]) -> dict[str, Any]:
     if not todo_ts:
         raise ValueError("todo_ts is required")
 
-    if not LOG_FILE.exists():
-        return {"ok": False, "error": "logs file not found"}
-
     import json as _json
 
+    if not storage.DEV_TODO_FILE.exists():
+        return {"ok": False, "error": "dev todos file not found"}
+
     entries: list[dict[str, Any]] = []
-    with LOG_FILE.open("r", encoding="utf-8", errors="ignore") as f:
+    with storage.DEV_TODO_FILE.open("r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -602,34 +871,24 @@ async def api_todo_status(payload: dict[str, Any]) -> dict[str, Any]:
             e["done"] = status == "done"
             e["comment"] = comment
 
-    with LOG_FILE.open("w", encoding="utf-8") as f:
-        for e in entries:
-            f.write(_json.dumps(e, ensure_ascii=False) + "\n")
+    storage.write_dev_todos(entries)
 
     return {"ok": True}
 
 
 @app.get("/api/campaigns/{campaign_id}")
 async def api_campaign(campaign_id: str) -> dict[str, Any]:
-    return _load_campaign(campaign_id)
+    return storage.load_campaign(campaign_id)
 
 
 @app.get("/api/logs")
-async def api_logs(limit: int = 100) -> list[dict[str, Any]]:
-    if not LOG_FILE.exists():
-        return []
-    entries: List[dict[str, Any]] = []
-    with LOG_FILE.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entries.append(json.loads(line))
-            except Exception:
-                continue
-    entries.sort(key=lambda e: e.get("ts", ""))
-    if limit and limit > 0:
-        entries = entries[-limit:]
-    entries.reverse()
-    return entries
+async def api_logs(
+    limit: int = 100,
+    campaign_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    return dev_get_logs(limit=limit, campaign_id=campaign_id)
+
+
+@app.get("/api/dev-todos")
+async def api_dev_todos(limit: int = 100) -> list[dict[str, Any]]:
+    return _read_dev_todos(limit=limit)

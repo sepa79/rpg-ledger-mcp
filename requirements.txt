@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 mcp
 aiofiles
+d20
+networkx
